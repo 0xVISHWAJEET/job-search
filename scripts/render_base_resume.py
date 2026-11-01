@@ -54,7 +54,7 @@ def _education_section(education: list[dict]) -> str:
     blocks = []
     for entry in education:
         date_range = f"{entry.get('start_date') or ''} -- {entry.get('end_date') or ''}".strip(" -")
-        header = f"\\headingBf{{{_latex_escape(entry['degree'])}}}{{{_latex_escape(entry['institution'])} -- {date_range}}}"
+        header = f"\\headingBf{{{_latex_escape(entry.get('degree') or '')}}}{{{_latex_escape(entry.get('institution') or '')} -- {date_range}}}"
         items = f"  \\item {_latex_escape(entry['details'])}" if entry.get("details") else ""
         block = f"{header}\n\\begin{{resume_list}}\n{items}\n\\end{{resume_list}}" if items else header
         blocks.append(block)

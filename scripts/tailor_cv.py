@@ -81,7 +81,7 @@ def _render_experience_section(experience: list[dict]) -> str:
     for entry in experience:
         date_range = f"{entry['start_date']} -- {entry['end_date']}"
         header = f"\\headingBf{{{_latex_escape(entry['position'])}}}{{{_latex_escape(entry['company'])} -- {date_range}}}"
-        location = f"\\headingIt{{{_latex_escape(entry['location'])}}}{{}}"
+        location = f"\\headingIt{{{_latex_escape(entry.get('location') or '')}}}{{}}"
         items = "\n".join(f"  \\item {_latex_escape(h)}" for h in entry["highlights"])
         blocks.append(f"{header}\n{location}\n\\begin{{resume_list}}\n{items}\n\\end{{resume_list}}")
 

@@ -65,6 +65,15 @@ def _call_model(model: str, api_key: str, payload: bytes) -> dict:
             wait_match = re.search(r"retry in ([\d.]+)s", body)
             wait_seconds = float(wait_match.group(1)) + 1 if wait_match else (5 * (attempt + 1))
             time.sleep(wait_seconds)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            # Network-level failure (DNS, connection reset, read timeout) -
+            # not an HTTP response at all, so it has no status code to branch
+            # on. Treat like a transient 503: retry within this model, then
+            # let the caller fall through to the next one in MODEL_CHAIN.
+            last_error = GeminiError(f"Network error calling Gemini ({model}): {exc}")
+            if attempt == MAX_RETRIES_PER_MODEL - 1:
+                raise last_error from exc
+            time.sleep(5 * (attempt + 1))
 
     raise last_error
 
