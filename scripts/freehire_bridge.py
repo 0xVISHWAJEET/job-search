@@ -24,10 +24,10 @@ from pathlib import Path
 
 CLI_DIR = Path(__file__).parent.parent / "vendor" / "ai-job-search" / "freehire-search" / "cli"
 
-# Keyword queries covering this project's default target categories - a
-# fresh clone's candidate_profile.json may list different target_roles, so
-# scripts/setup_profile.py regenerates this list's equivalent from that
-# file; this default stays broad and tech-general as a fallback.
+# Fallback only - discover_jobs.py's main() passes the user's own
+# preferences.target_roles (from candidate_profile.json, via
+# setup_profile.py) as `queries` explicitly. This default is just for
+# standalone/library use before a profile exists.
 DEFAULT_QUERIES = ["devops", "site reliability", "platform engineer", "blockchain", "ai engineer", "security engineer"]
 
 # 25, not freehire-search's own default of 25/CLI max of 50+ - empirically,

@@ -48,13 +48,51 @@ MIN_SCORE = 0.80
 PROFILE_PATH = Path(__file__).parent.parent / "profile" / "candidate_profile.json"
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 
-ROLE_KEYWORDS = {
+# Fallback keywords, used only if profile/candidate_profile.json doesn't
+# exist yet (before setup_profile.py has run) or has no target_roles.
+_DEFAULT_ROLE_KEYWORDS = {
     "DevOps": ["devops", "site reliability", "platform engineer", "infrastructure"],
     "SRE": ["site reliability", "sre "],
     "Blockchain": ["blockchain", "web3", "solidity", "smart contract", "protocol engineer"],
     "AI": ["machine learning", "ai engineer", "llm", "agentic", "artificial intelligence"],
     "Cryptography": ["cryptography", "zero-knowledge", "zk-snark", "applied crypto"],
 }
+_DEFAULT_TARGET_ROLES = [
+    "DevOps Engineer", "Site Reliability Engineer", "Platform Engineer",
+    "Blockchain Engineer", "AI Engineer", "Cryptography Engineer",
+]
+_SENIORITY_PREFIXES = ("senior ", "staff ", "principal ", "lead ", "junior ", "sr ", "jr ", "ii ", "iii ")
+
+
+def _load_target_roles() -> list[str]:
+    """Reads preferences.target_roles from the user's own profile (set by
+    setup_profile.py from their actual resume) - this is what makes role
+    classification/search work for any candidate, not just the original
+    DevOps/Blockchain/AI/Cryptography search this repo was built for."""
+    try:
+        profile = json.loads(PROFILE_PATH.read_text())
+        roles = profile.get("preferences", {}).get("target_roles") or []
+        if roles:
+            return roles
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return _DEFAULT_TARGET_ROLES
+
+
+def _role_keyword_variants(role: str) -> list[str]:
+    role_lower = role.lower().strip()
+    variants = {role_lower}
+    for prefix in _SENIORITY_PREFIXES:
+        if role_lower.startswith(prefix):
+            variants.add(role_lower[len(prefix):])
+    return list(variants)
+
+
+TARGET_ROLES = _load_target_roles()
+ROLE_KEYWORDS = (
+    _DEFAULT_ROLE_KEYWORDS if TARGET_ROLES == _DEFAULT_TARGET_ROLES
+    else {role: _role_keyword_variants(role) for role in TARGET_ROLES}
+)
 
 
 def _fetch(url: str, timeout: int = 15) -> bytes:
@@ -570,18 +608,10 @@ def discover_dice(queries: list[str]) -> list[dict]:
     return listings
 
 
-LINKEDIN_KEYWORDS = [
-    # DevOps / SRE / Platform
-    "DevOps Engineer", "Site Reliability Engineer", "Platform Engineer",
-    "Cloud Infrastructure Engineer", "Kubernetes Engineer",
-    # Blockchain
-    "Blockchain Engineer", "Blockchain Developer", "Smart Contract Engineer",
-    "Solidity Developer", "Protocol Engineer Web3",
-    # AI
-    "AI Engineer", "Machine Learning Engineer", "LLM Engineer", "Agentic AI Engineer",
-    # Cryptography
-    "Cryptography Engineer", "Applied Cryptography Security Engineer",
-]
+# LinkedIn's guest search takes free-text query strings, so the user's own
+# target_roles (from their resume, via setup_profile.py) work directly -
+# same source as ROLE_KEYWORDS/TARGET_ROLES above.
+LINKEDIN_KEYWORDS = TARGET_ROLES
 
 
 def discover_linkedin(keywords: list[str]) -> list[dict]:
@@ -645,12 +675,20 @@ def main():
     print(f"  + WeWorkRemotely: {len(all_listings)} so far")
     all_listings += discover_web3career()
     print(f"  + web3.career: {len(all_listings)} so far")
-    all_listings += discover_dice(["devops", "site reliability", "blockchain", "cryptography"])
+    all_listings += discover_dice(TARGET_ROLES)  # free-text search, same source as LINKEDIN_KEYWORDS
     print(f"  + Dice: {len(all_listings)} so far")
     all_listings += discover_remotive()
     print(f"  + Remotive: {len(all_listings)} so far")
     all_listings += discover_wellfound()
     print(f"  + Wellfound: {len(all_listings)} so far")
+    # BuiltIn/JustJoinIT category paths below are each site's own fixed
+    # taxonomy slugs (a small finite set, e.g. BuiltIn's "/jobs/dev-ops"),
+    # not free-text search - unlike TARGET_ROLES-driven sources above/below,
+    # these two still default to this repo's original DevOps/AI/Blockchain
+    # categories regardless of your profile. Edit the lists below directly
+    # if your target roles fall outside those categories; every other
+    # source (ATS boards, career-ops, freehire, Dice, LinkedIn, GitJobs) is
+    # already profile-driven via ROLE_KEYWORDS/TARGET_ROLES.
     all_listings += discover_builtin(
         ["/jobs/dev-ops", "/jobs/blockchain-crypto", "/jobs/artificial-intelligence"],
         hosts=BUILTIN_HOSTS,
@@ -666,7 +704,7 @@ def main():
     print(f"  + ATS boards (Greenhouse/Lever/Ashby): {len(all_listings)} total")
     all_listings += discover_via_career_ops(_classify_role, MAX_AGE_DAYS)
     print(f"  + career-ops reverse ATS scan (Greenhouse/Lever/Ashby/Workday/iCIMS/BambooHR/Paylocity/join.com directories): {len(all_listings)} total")
-    all_listings += discover_via_freehire(_classify_role, MAX_AGE_DAYS)
+    all_listings += discover_via_freehire(_classify_role, MAX_AGE_DAYS, queries=[r.lower() for r in TARGET_ROLES])
     print(f"  + freehire.me aggregator (~50 ATS platforms, many countries): {len(all_listings)} total")
 
     print(f"\nScoring {len(all_listings)} listings (min score {MIN_SCORE})...")
