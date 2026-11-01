@@ -106,8 +106,15 @@ job-search/
 │   ├── freehire_bridge.py         # bridges vendor/ai-job-search's freehire-search
 │   │                               # CLI (see below) into the pipeline
 │   ├── mcp_server.py              # exposes score_job/tailor_cv/vault_* as MCP tools
-│   └── backfill_tailor.py         # one-off: tailors + generates Q&A for jobs already
-│                                   # in jobs.db that are missing either
+│   ├── backfill_tailor.py         # one-off: tailors + cover-letters + Q&A for jobs
+│   │                               # already in jobs.db that are missing any of them
+│   ├── dump_unscored.py           # discovers + cleans descriptions for everything not
+│   │                               # yet scored, writes jobs/unscored.jsonl - no LLM call
+│   ├── dump_pending_backfill.py   # same output format, but for qualifying jobs still
+│   │                               # missing a resume/cover-letter/Q&A - no LLM call
+│   └── apply_manual_results.py    # applies externally-generated results (any LLM, or
+│                                   # by hand) back into jobs.db - see "When the free
+│                                   # Gemini quota runs out" below
 ├── vendor/
 │   ├── career-ops/                # vendored github.com/career-ops-hq/career-ops -
 │   │   └── portals.yml            # your tuned title_filter (gitignored, personal)
@@ -174,6 +181,41 @@ python3 scripts/cover_letter.py "Company Name" "Role Title" path/to/jd.txt
 # 4. Recompile your base resume any time candidate_profile.json changes
 python3 scripts/render_base_resume.py
 ```
+
+### When the free Gemini quota runs out
+
+The free tier has a daily request cap. If `discover_jobs.py` or
+`backfill_tailor.py` starts hitting `429`s partway through, you don't have
+to wait a day - dump what's left to a file and fill it in with any other
+LLM (another API key, a different provider, or by hand) with zero Gemini
+calls:
+
+```bash
+# Discover-and-dump path: run full discovery (same ~180 sources), skip
+# anything already scored, write the rest as plain JSON (no LLM call) to
+# jobs/unscored.jsonl
+python3 scripts/dump_unscored.py
+
+# Backfill-and-dump path: for jobs already scored >= MIN_SCORE but still
+# missing a resume, cover letter, or Q&A, re-fetch their descriptions and
+# write the same jobs/unscored.jsonl format
+python3 scripts/dump_pending_backfill.py
+
+# Now feed each entry's "description" to any LLM, producing one JSON object
+# per line in jobs/manual_results.jsonl:
+#   {"apply_url": "...", "score": 0.92, "reasoning": "...",
+#    "summary": "...", "experience": [...],       # only if score >= 0.80
+#    "cover_letter": "...", "qa_pairs": [...]}     # only if score >= 0.80
+# (experience uses the same shape tailor_cv.py produces; qa_pairs is
+# [{"question", "answer", "source": "generated"|"vault"}])
+
+# Apply it: renders/compiles the resume, writes the cover letter, saves
+# Q&A, all without touching Gemini
+python3 scripts/apply_manual_results.py jobs/manual_results.jsonl
+```
+
+If you skip a job entirely, that's fine - `apply_one()` falls back to
+whatever's already in `jobs.db` for any field you didn't resupply.
 
 ### As an MCP server
 

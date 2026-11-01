@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "jobs"))
 from jobs_db import JobsDB  # noqa: E402
 from generate_qa import generate_qa_for_job, write_qa_markdown  # noqa: E402
 from tailor_cv import tailor as tailor_resume  # noqa: E402
+from cover_letter import write_cover_letter  # noqa: E402
 from discover_jobs import _fetch  # noqa: E402
 
 MIN_SCORE = 0.80
@@ -45,7 +46,7 @@ def main():
     qualifying = db.qualifying(min_score=MIN_SCORE)
     pending = [
         j for j in qualifying
-        if not j["tailored_resume_path"] or not db.get_questions(j["id"])
+        if not j["tailored_resume_path"] or not db.get_questions(j["id"]) or not j["cover_letter_path"]
     ]
 
     print(f"{len(pending)} qualifying jobs need tailoring and/or Q&A "
@@ -54,8 +55,10 @@ def main():
     for i, job in enumerate(pending, 1):
         needs_resume = not job["tailored_resume_path"]
         needs_qa = not db.get_questions(job["id"])
+        needs_cl = not job["cover_letter_path"]
         print(f"[{i}/{len(pending)}] {job['title']} @ {job['company']} ({job['portal']})"
-              f" - resume:{'yes' if needs_resume else 'no'} qa:{'yes' if needs_qa else 'no'}")
+              f" - resume:{'yes' if needs_resume else 'no'} qa:{'yes' if needs_qa else 'no'}"
+              f" cover_letter:{'yes' if needs_cl else 'no'}")
 
         try:
             description = _extract_description(job["portal"], job["apply_url"])
@@ -79,6 +82,17 @@ def main():
                 qa_path = write_qa_markdown(job["company"] or job["portal"], job["title"], qa_pairs)
                 db.replace_questions(job["id"], qa_pairs)
                 print(f"  Q&A ({len(qa_pairs)}): {qa_path}")
+
+            if needs_cl:
+                cl_path = write_cover_letter(job["company"] or job["portal"], job["title"], description)
+                db.add_or_update(
+                    portal=job["portal"], title=job["title"], company=job["company"],
+                    role_category=job["role_category"], location=job["location"],
+                    apply_url=job["apply_url"], posted_date=job["posted_date"],
+                    match_score=job["match_score"], match_reasoning=job["match_reasoning"],
+                    cover_letter_path=str(cl_path), status="tailored",
+                )
+                print(f"  cover letter: {cl_path}")
 
         except Exception as exc:
             print(f"  FAILED: {exc}")

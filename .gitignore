@@ -13,6 +13,8 @@ profile/*.aux
 profile/*.log
 jobs/jobs.db
 jobs/outputs/
+jobs/unscored.jsonl
+jobs/manual_results.jsonl
 vault/answers.db
 resume/*.aux
 resume/*.log
